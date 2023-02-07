@@ -1,0 +1,49 @@
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+    <div class="container">
+      <h1 class="mt-4">Join Room</h1>
+      <% include ./partials/messages %>
+      <form class="w-25" method="POST">
+        <div class="row mb-3">
+          <div class="col">
+            <input
+              type="text"
+              name="name"
+              class="form-control"
+              value="<%= roomObj.name %>"
+              readonly="readonly"
+            />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <input
+              type="text"
+              name="accessKey"
+              class="form-control"
+              placeholder="Access key"
+            />
+            <input
+              type="hidden"
+              name="id"
+              class="form-control"
+              value="<%= roomObj._id %>"
+            />
+            <button
+              type="submit"
+              name="submitBtn"
+              class="btn btn-primary mt-3"
+              value="done"
+            >
+              Join Game
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <hr />
+  </div>
+  <!-- /#page-content-wrapper -->
+</div>

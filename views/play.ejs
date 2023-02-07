@@ -1,0 +1,866 @@
+<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+<link rel="stylesheet" href="css/chat.css" />
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+
+    <div class="container">
+      <div class="row" id="video-showcase"></div>
+      <div class="row mt-3">
+        <div class="col col-3">
+          <div class="chat_window">
+            <ul class="messages chat_area"></ul>
+
+            <div class="bottom_wrapper clearfix">
+              <div class="message_input_wrapper">
+                <input class="message_input" placeholder="Chat here..." />
+              </div>
+              <div class="send_message" id="send_chat">
+                <div class="icon"></div>
+                <div class="text">Send</div>
+              </div>
+            </div>
+          </div>
+          <div class="message_template">
+            <li class="message">
+              <div class="text_wrapper">
+                <div class="text"></div>
+              </div>
+            </li>
+          </div>
+        </div>
+
+        <div class="col col-6">
+          <div class="container">
+            <div id="board" class="" style="width: 500px;"></div>
+            <div id="promotion-dialog">
+              <ol id="promote-to">
+                <li class="ui-state-default">
+                  <span class="piece-name">q</span
+                  ><img class="promotion-piece-q promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">r</span
+                  ><img class="promotion-piece-r promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">n</span
+                  ><img class="promotion-piece-n promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">b</span
+                  ><img class="promotion-piece-b promotion-piece" />
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+        <div class="col col-3">
+          <div>
+            Timer:
+            <i class="fas fa-chess-knight" style="color: white;"></i
+            ><span id="tw"> 00:00</span> | <i class="fas fa-chess-knight"></i
+            ><span id="tb"> 00:00</span>
+          </div>
+          <div id="player"></div>
+          <div id="roomNumbers">Loading...</div>
+          <div id="state">Join Game</div>
+          <br />
+          <div class="chat_window" style="height: 370px; top: 64%;">
+            <ul class="messages" style="overflow: hidden;">
+              <li
+                class="message left appeared"
+                id="pgn-viewer"
+                style="height: 75%; margin-bottom: 4px;"
+              ></li>
+              <li>
+                <button
+                  id="export_game_pgn"
+                  class="btn btn-secondary d-block mx-auto"
+                >
+                  Export Game PGN
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- /#page-content-wrapper -->
+  </div>
+</div>
+<script>
+  var send_chat_btn = document.getElementById("send_chat");
+  var send_chat_text = document.getElementsByClassName("message_input")[0];
+  var messages_container = document.getElementsByClassName("chat_area")[0];
+  var game;
+  var globalPgn = [];
+
+  var piece_theme, promote_to, promoting, promotion_dialog;
+  piece_theme = "img/chesspieces/wikipedia/{piece}.png";
+  promotion_dialog = $("#promotion-dialog");
+
+  game = new Chess();
+  var socket = io("", {
+    query: {
+      mode: "p2p",
+    },
+  });
+  var color = "white";
+  var players;
+  var roomId = parseInt("<%=roomId%>");
+  var playerType;
+
+  var name = "Guest";
+  var play = true;
+  var canMove = true;
+
+  /* global time */
+  var timeintervalW, timeintervalB;
+  var globalTimerW, globalTimerB;
+  var gameTimer = parseInt("<%=timer%>") * 60;
+
+  var room = document.getElementById("room");
+  var roomNumber = document.getElementById("roomNumbers");
+  // var button = document.getElementById("button");
+  var state = document.getElementById("state");
+
+  var connect = function () {
+    // roomId = room.value;
+    // alert("");
+    if (roomId !== "" && parseInt(roomId) <= 10000) {
+      // room.remove();
+      roomNumber.innerHTML = "Game Number " + roomId;
+      // button.remove();
+      socket.emit("joined", roomId, gameTimer, "<%=color%>");
+    }
+  };
+
+  // window.onbeforeunload = function(event) {
+  //   return confirm("Are you sure to lose the game progress?");
+  // };
+
+  window.onload = connect;
+  socket.on("is_room_full", function (isRoomFull) {
+    document.body.style.display = "none";
+    window.location.href = "/full";
+  });
+
+  socket.on("user_left", function (data) {
+    if (canMove) {
+      // alert("Opponent has left the match.");
+      // board.clear;
+      // board.destroy
+      state.innerHTML = "Game ended (Opponent has left the match).";
+      // window.location.reload();
+    }
+  });
+
+  socket.on("play", function (msg) {
+    if (msg == roomId) {
+      play = false;
+      state.innerHTML = "Game in Progress";
+      if (canMove) {
+        state.innerHTML +=
+          "<br /> <button id='resign' onclick='resign()'>Resign</button> <button id='draw' onclick='draw()'>Draw</button> <button disabled id='move_back' onclick='move_back()'>Move back</button>";
+      }
+      if (canMove) {
+        if (game.turn() == "w") {
+          clearInterval(timeintervalB);
+          clearInterval(timeintervalW);
+          startTimerW(globalTimerW, "#tw");
+        } else {
+          clearInterval(timeintervalB);
+          clearInterval(timeintervalW);
+          startTimerB(globalTimerB, "#tb");
+        }
+      }
+    }
+    // console.log(msg)
+  });
+  socket.on("gameLost", function (losterColor) {
+    console.log(losterColor);
+    if (losterColor == "white") {
+      playerNum = 1;
+      document.getElementById("tw").innerHTML = " 00:00";
+    } else {
+      playerNum = 2;
+      document.getElementById("tb").innerHTML = " 00:00";
+    }
+    clearInterval(timeintervalB);
+    clearInterval(timeintervalW);
+    state.innerHTML = "TIME OVER: Player " + playerNum + " has lost the game.";
+    document.getElementById("board").innerHTML =
+      "<div style='height: 500px;'><h1> Player " +
+      playerNum +
+      " has lost the game. </h1><br /> <div id='rematch_container'><button onclick='rematch()'>Rematch</button></div></div>";
+  });
+
+  socket.on("move", function (msg) {
+    if (msg.room == roomId) {
+      game.move(msg.move);
+      board.position(game.fen());
+      globalPgn.push(msg.move.to);
+      loadPGN(globalPgn);
+      if (canMove) {
+        if (game.turn() == "w") {
+          var resumeTime = gameTimer;
+          if (globalTimerW) {
+            var resumeTime = globalTimerW;
+          }
+          startTimerW(resumeTime, "#tw");
+          clearInterval(timeintervalB);
+        } else {
+          var resumeTime = gameTimer;
+          if (globalTimerB) {
+            var resumeTime = globalTimerB;
+          }
+          startTimerB(resumeTime, "#tb");
+          clearInterval(timeintervalW);
+        }
+      }
+      if (canMove) {
+        document.getElementById("move_back").disabled = true;
+      }
+      console.log("moved");
+    }
+  });
+
+  send_chat_btn.addEventListener("click", function (e) {
+    var txt = send_chat_text.value;
+    if (txt) {
+      send_chat_msg(txt.trim());
+    } else {
+      //not exists
+    }
+  });
+
+  send_chat_text.addEventListener("keypress", function (e) {
+    if (e.which == 13) {
+      var txt = send_chat_text.value;
+      if (txt) {
+        send_chat_msg(txt.trim());
+      } else {
+        //not exists
+      }
+    }
+  });
+
+  function send_chat_msg(msg) {
+    socket.emit("user_chat_msg", {
+      name: name,
+      msg: msg,
+    });
+    send_chat_text.value = "";
+    send_chat_text.focus();
+  }
+
+  socket.on("user_chat_msg_received", function (msgObj) {
+    var html = `<li class="message left appeared">
+                <div class="text_wrapper">
+                  <div class="text">
+                    <strong><i>${msgObj.name.toUpperCase()}: </i></strong>${
+      msgObj.msg
+    }
+                  </div>
+                </div>
+              </li>`;
+    messages_container.insertAdjacentHTML("beforeend", html);
+    messages_container.scrollTop = 20000000;
+  });
+
+  socket.on("audience", function (data) {
+    console.log("audience");
+    canMove = false;
+    document.getElementsByClassName("bottom_wrapper")[0].remove();
+    document.getElementById("export_game_pgn").remove();
+  });
+  var removeGreySquares = function () {
+    $("#board .square-55d63").css("background", "");
+  };
+
+  var greySquare = function (square) {
+    var squareEl = $("#board .square-" + square);
+
+    var background = "#a9a9a9";
+    if (squareEl.hasClass("black-3c85d") === true) {
+      background = "#696969";
+    }
+
+    squareEl.css("background", background);
+  };
+
+  var onDragStart = function (source, piece) {
+    // do not pick up pieces if the game is over
+    // or if it's not that side's turn
+    console.log(game.turn());
+    if (
+      game.game_over() === true ||
+      play ||
+      (game.turn() === "w" &&
+        piece != undefined &&
+        piece.search(/^b/) !== -1) ||
+      (game.turn() === "b" &&
+        piece != undefined &&
+        piece.search(/^w/) !== -1) ||
+      (game.turn() === "w" && color === "black") ||
+      (game.turn() === "b" && color === "white")
+    ) {
+      return false;
+    }
+    // console.log({play, players});
+  };
+
+  var onDrop = function (source, target) {
+    if (!canMove) return "snapback";
+    removeGreySquares();
+
+    // see if the move is legal
+    move_cfg = {
+      from: source,
+      to: target,
+      promotion: "q", // NOTE: always promote to a queen for example simplicity
+    };
+
+    var move = game.move(move_cfg);
+    if (game.game_over()) {
+      state.innerHTML = "GAME OVER";
+      socket.emit("gameOver", roomId);
+    }
+
+    // illegal move
+    if (move === null) return "snapback";
+    else {
+      globalPgn.push(move.to);
+      // console.log(globalPgn);
+      emitTimerObj = { color: "", timer: "" };
+      if (canMove) {
+        if (game.turn() == "w") {
+          var resumeTime = gameTimer;
+          if (globalTimerW) {
+            var resumeTime = globalTimerW;
+          }
+          startTimerW(resumeTime, "#tw");
+          clearInterval(timeintervalB);
+          emitTimerObj.color = "b";
+          emitTimerObj.timer = globalTimerB;
+        } else {
+          var resumeTime = gameTimer;
+          if (globalTimerB) {
+            var resumeTime = globalTimerB;
+          }
+          startTimerB(resumeTime, "#tb");
+          clearInterval(timeintervalW);
+          emitTimerObj.color = "w";
+          emitTimerObj.timer = globalTimerW;
+        }
+      }
+      game.undo();
+    }
+
+    var source_rank = source.substring(2, 1);
+    var target_rank = target.substring(2, 1);
+    var piece = game.get(source).type;
+
+    if (
+      piece === "p" &&
+      ((source_rank === "7" && target_rank === "8") ||
+        (source_rank === "2" && target_rank === "1"))
+    ) {
+      promoting = true;
+      // get piece images
+      $(".promotion-piece-q").attr("src", getImgSrc("q"));
+      $(".promotion-piece-r").attr("src", getImgSrc("r"));
+      $(".promotion-piece-n").attr("src", getImgSrc("n"));
+      $(".promotion-piece-b").attr("src", getImgSrc("b"));
+
+      //show the select piece to promote to dialog
+      promotion_dialog
+        .dialog({
+          modal: true,
+          height: 46,
+          width: 184,
+          resizable: true,
+          draggable: false,
+          close: onDialogClose,
+          closeOnEscape: false,
+          dialogClass: "noTitleStuff",
+        })
+        .dialog("widget")
+        .position({
+          of: $("#board"),
+          my: "middle middle",
+          at: "middle middle",
+        });
+      //the actual move is made after the piece to promote to
+      //has been selected, in the stop event of the promotion piece selectable
+      return;
+    }
+
+    makeMove(game, move_cfg, emitTimerObj);
+  };
+
+  var onDialogClose = function () {
+    //console.log(promote_to);
+    move_cfg.promotion = promote_to;
+    makeMove(game, move_cfg, emitTimerObj);
+  };
+
+  function makeMove(game, cfg, timerObj) {
+    // see if the move is legal
+
+    var move = game.move(cfg);
+    if (move === null) {
+      return "snapback";
+    } else {
+      //  console.log(game.pgn());
+      board.position(game.fen());
+      socket.emit("move", {
+        move: move,
+        board: game.fen(),
+        room: roomId,
+        timerObj: timerObj,
+      });
+      if (canMove) {
+        document.getElementById("move_back").disabled = false;
+      }
+      loadPGN(globalPgn);
+    }
+  }
+
+  // init promotion piece dialog
+  $(function () {
+    $("#promote-to").selectable({
+      stop: function () {
+        $(".ui-selected", this).each(function () {
+          var selectable = $("#promote-to li");
+          var index = selectable.index(this);
+          if (index > -1) {
+            var promote_to_html = selectable[index].innerHTML;
+            var span = $("<div>" + promote_to_html + "</div>").find("span");
+            promote_to = span[0].innerHTML;
+          }
+          promotion_dialog.dialog("close");
+          $(".ui-selectee").removeClass("ui-selected");
+          updateBoard(board);
+        });
+      },
+    });
+  });
+  function getImgSrc(piece) {
+    return piece_theme.replace(
+      "{piece}",
+      game.turn() + piece.toLocaleUpperCase()
+    );
+  }
+
+  function updateBoard(board) {
+    board.position(game.fen(), false);
+    promoting = false;
+    onSnapEnd();
+  }
+
+  var onMouseoverSquare = function (square, piece) {
+    if (!canMove) return false;
+    // get list of possible moves for this square
+    var moves = game.moves({
+      square: square,
+      verbose: true,
+    });
+
+    // exit if there are no moves available for this square
+    if (moves.length === 0) return;
+
+    // highlight the square they moused over
+    greySquare(square);
+
+    // highlight the possible squares for this piece
+    for (var i = 0; i < moves.length; i++) {
+      greySquare(moves[i].to);
+    }
+  };
+
+  var onMouseoutSquare = function (square, piece) {
+    if (!canMove) return false;
+    removeGreySquares();
+  };
+
+  var onSnapEnd = function () {
+    if (!canMove) return false;
+    board.position(game.fen());
+  };
+  socket.on("resign", (playerType) => {
+    state.innerHTML = "GAME OVER: Player " + playerType + " has quit the game.";
+    document.getElementById("board").innerHTML =
+      "<h1 style='height: 500px;'> You won the match. <br />Player " +
+      playerType +
+      " has quit the game.</h1>";
+    clearInterval(timeintervalB);
+    clearInterval(timeintervalW);
+  });
+
+  socket.on("draw", (roomId, playerType) => {
+    swal({
+      text:
+        "Player " +
+        playerType +
+        " has requested draw. Hit OK to draw the game.",
+      icon: "warning",
+      buttons: true,
+      dangerMode: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+    }).then((willDelete) => {
+      if (willDelete) {
+        socket.emit("draw_confirmation", roomId, "Accepted");
+        state.innerHTML = "GAME OVER: The game has been drawn.";
+        document.getElementById("board").innerHTML =
+          "<h1 style='height: 500px;'> GAME OVER: The game has been drawn";
+        clearInterval(timeintervalB);
+        clearInterval(timeintervalW);
+      } else {
+        socket.emit("draw_confirmation", roomId, "Ignored");
+      }
+    });
+  });
+
+  socket.on("move_back", (roomId, playerType) => {
+    swal({
+      text:
+        "Player " +
+        playerType +
+        " has requested MOVE BACK. Hit OK to make the move back.",
+      icon: "warning",
+      buttons: true,
+      dangerMode: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+    }).then((willDelete) => {
+      if (willDelete) {
+        socket.emit("move_back_confirmation", roomId, "Accepted");
+        globalPgn.pop();
+        game.undo();
+        board.position(game.fen());
+        // state.innerHTML = "GAME OVER: The game has been drawn.";
+        // document.getElementById("board").innerHTML =
+        //   "<h1 style='height: 500px;'> GAME OVER: The game has been drawn";
+        clearInterval(timeintervalB);
+        clearInterval(timeintervalW);
+        loadPGN(globalPgn);
+        if (playerType == 2) {
+          startTimerB(globalTimerB, "#tb");
+        } else {
+          startTimerW(globalTimerW, "#tw");
+        }
+        // startTimerW(globalTimerW, "#tw");
+      } else {
+        socket.emit("move_back_confirmation", roomId, "Ignored");
+      }
+    });
+  });
+
+  socket.on("rematch_request", (roomId) => {
+    swal({
+      text: "Player has requested a rematch. Hit OK to rematch.",
+      icon: "warning",
+      buttons: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+      dangerMode: true,
+    }).then((willDelete) => {
+      if (willDelete) {
+        socket.emit("rematch_confirmation", roomId, "Accepted");
+        window.location.reload();
+      } else {
+        socket.emit("rematch_confirmation", roomId, "Ignored");
+        window.location = "/multiplayer";
+      }
+    });
+  });
+
+  socket.on("draw_confirmation", (action) => {
+    if (action == "Accepted") {
+      state.innerHTML = "GAME OVER: The game has been drawn.";
+      document.getElementById("board").innerHTML =
+        "<h1 style='height: 500px;'> GAME OVER: The game has been drawn";
+      clearInterval(timeintervalB);
+      clearInterval(timeintervalW);
+    } else {
+      swal("Your draw request has been rejected.");
+    }
+  });
+
+  socket.on("move_back_confirmation", (action) => {
+    document.getElementById("move_back").disabled = true;
+    if (action == "Accepted") {
+      globalPgn.pop();
+      game.undo();
+      board.position(game.fen());
+      clearInterval(timeintervalB);
+      clearInterval(timeintervalW);
+      loadPGN(globalPgn);
+      if (playerType == 2) {
+        startTimerB(globalTimerB, "#tb");
+      } else {
+        startTimerW(globalTimerW, "#tw");
+      }
+    } else {
+      swal("Your MOVE BACK request has been rejected.");
+    }
+  });
+
+  socket.on("rematch_confirmation", (action) => {
+    if (action == "Accepted") {
+      window.location.reload();
+    } else {
+      swal("Your rematch request has been rejected.");
+      setTimeout(() => {
+        window.location = "/multiplayer";
+      }, 4000);
+    }
+  });
+
+  socket.on("player", (msg) => {
+    var plno = document.getElementById("player");
+    color = msg.color;
+    playerType = msg.playerType;
+    plno.innerHTML = "Player " + msg.playerType + " : " + color;
+    players = msg.players;
+
+    if (players == 2) {
+      play = false;
+
+      state.innerHTML = "Game in Progress";
+      if (canMove) {
+        state.innerHTML +=
+          "<br /> <button id='resign' onclick='resign()'>Resign</button> <button id='draw' onclick='draw()'>Draw</button> <button disabled id='move_back' onclick='move_back()'>Move back</button>";
+      }
+    } else state.innerHTML = "Waiting for Second player";
+
+    var cfg = {
+      orientation: color,
+      draggable: true,
+      position: "start",
+      onDragStart: onDragStart,
+      onDrop: onDrop,
+      onMouseoutSquare: onMouseoutSquare,
+      onMouseoverSquare: onMouseoverSquare,
+      onSnapEnd: onSnapEnd,
+    };
+
+    board = ChessBoard("board", cfg);
+    globalPgn = [];
+    if (msg.preViousMoves.length > 0) {
+      for (var i = 0; i < msg.preViousMoves.length; i++) {
+        game.move(msg.preViousMoves[i]);
+        board.position(game.fen(), false);
+        globalPgn.push(msg.preViousMoves[i].to);
+      }
+      loadPGN(globalPgn);
+    }
+
+    if (msg.chatMessages) {
+      for (var i = 0; i < msg.chatMessages.length; i++) {
+        var html = `<li class="message left appeared">
+                <div class="text_wrapper">
+                  <div class="text">
+                    <strong><i>${msg.chatMessages[
+                      i
+                    ].name.toUpperCase()}: </i></strong>${
+          msg.chatMessages[i].msg
+        }
+                  </div>
+                </div>
+              </li>`;
+        messages_container.insertAdjacentHTML("beforeend", html);
+        messages_container.scrollTop = 20000000;
+      }
+    }
+    globalTimerB = msg.gameTimerB;
+    globalTimerW = msg.gameTimerW;
+    if (players == 2 && canMove) {
+      globalTimerB = msg.gameTimerB;
+      globalTimerW = msg.gameTimerW;
+
+      socket.emit("play", msg.roomId);
+      if (game.turn() == "w") {
+        startTimerW(globalTimerW, "#tw");
+      } else {
+        startTimerB(globalTimerB, "#tb");
+      }
+    }
+    console.log("moved");
+  });
+  // console.log(color)
+
+  var board;
+  function resign() {
+    swal({
+      text: "Are you sure to leave the match?",
+      icon: "warning",
+      buttons: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+      dangerMode: true,
+    }).then((willDelete) => {
+      if (willDelete) {
+        socket.emit("resign", roomId, playerType);
+        state.innerHTML = "GAME OVER: You have quit the game.";
+        document.getElementById("board").innerHTML =
+          "<h1 style='height: 500px;'> You have quit the game.</h1>";
+        clearInterval(timeintervalB);
+        clearInterval(timeintervalW);
+      } else {
+        // swal("Your imaginary file is safe!");
+      }
+    });
+  }
+  function rematch() {
+    document.getElementById("rematch_container").innerHTML = "Request sent.";
+    socket.emit("rematch_request", roomId);
+  }
+  function draw() {
+    swal({
+      text: "Are you sure to send the draw request?",
+      icon: "warning",
+      buttons: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+      dangerMode: true,
+    }).then((willDelete) => {
+      if (willDelete) {
+        socket.emit("draw", roomId, playerType);
+      } else {
+        // swal("Your imaginary file is safe!");
+      }
+    });
+  }
+
+  function move_back() {
+    swal({
+      text: "Are you sure to send the MOVE BACK request?",
+      icon: "warning",
+      buttons: true,
+      allowOutsideClick: false,
+      closeOnClickOutside: false,
+      dangerMode: true,
+    }).then((willDelete) => {
+      if (willDelete) {
+        document.getElementById("move_back").disabled = true;
+        socket.emit("move_back", roomId, playerType);
+      } else {
+        // swal("Your imaginary file is safe!");
+      }
+    });
+    // game.undo();
+    // board.position(game.fen());
+  }
+  function startTimerW(duration, selector) {
+    var timer = duration,
+      minutes,
+      seconds;
+    timeintervalW = setInterval(function () {
+      minutes = parseInt(timer / 60, 10);
+      seconds = parseInt(timer % 60, 10);
+
+      minutes = minutes < 10 ? "0" + minutes : minutes;
+      seconds = seconds < 10 ? "0" + seconds : seconds;
+
+      document.querySelector(selector).textContent =
+        " " + minutes + ":" + seconds;
+
+      globalTimerW = timer;
+      if (timer == 0) {
+        clearInterval(timeintervalB);
+        clearInterval(timeintervalW);
+        socket.emit("gameLost", roomId, "white");
+        state.innerHTML = "TIME OVER: Player 1 has lost the game.";
+        document.getElementById("board").innerHTML =
+          "<h1 style='height: 500px;'> Player 2 has won the game.</h1>";
+      }
+      if (--timer < 0) {
+        timer = duration;
+      }
+    }, 1000);
+  }
+
+  function startTimerB(duration, selector) {
+    var timer = duration,
+      minutes,
+      seconds;
+    timeintervalB = setInterval(function () {
+      minutes = parseInt(timer / 60, 10);
+      seconds = parseInt(timer % 60, 10);
+
+      minutes = minutes < 10 ? "0" + minutes : minutes;
+      seconds = seconds < 10 ? "0" + seconds : seconds;
+
+      document.querySelector(selector).textContent =
+        " " + minutes + ":" + seconds;
+
+      globalTimerB = timer;
+      if (timer == 0) {
+        clearInterval(timeintervalB);
+        clearInterval(timeintervalW);
+        socket.emit("gameLost", roomId, "black");
+        state.innerHTML = "TIME OVER: Player 2 has lost the game.";
+        document.getElementById("board").innerHTML =
+          "<h1 style='height: 500px;'> Player 1 has won the game.</h1>";
+      }
+      if (--timer < 0) {
+        timer = duration;
+      }
+    }, 1000);
+  }
+
+  function loadPGN(arr) {
+    var pgnContainer = document.getElementById("pgn-viewer");
+    pgnContainer.innerHTML = "";
+    var numbering = 1; // new added
+    for (var i = 0; i < arr.length; i++) {
+      if (i % 2 == 0) {
+        pgnContainer.innerHTML += numbering + "- ";
+      } // new added
+      pgnContainer.innerHTML +=
+        "<button type='button' data-pgnIdx='" +
+        i +
+        "' class='btn btn-primary btn-sm m-1 pgn-list'>" +
+        arr[i] +
+        "</button>";
+      if (i % 2 == 1) {
+        numbering++;
+        pgnContainer.innerHTML += "<br />";
+      } // new added
+    }
+    pgnContainer.scrollTop = 20000000;
+  }
+
+  document
+    .getElementById("export_game_pgn")
+    .addEventListener("click", function () {
+      if (game.pgn()) {
+        downloadPGN("pgn.txt", game.pgn());
+      }
+    });
+
+  function downloadPGN(filename, text) {
+    var element = document.createElement("a");
+    element.setAttribute(
+      "href",
+      "data:text/plain;charset=utf-8," + encodeURIComponent(text)
+    );
+    element.setAttribute("download", filename);
+
+    element.style.display = "none";
+    document.body.appendChild(element);
+
+    element.click();
+
+    document.body.removeChild(element);
+  }
+
+  // window.onbeforeunload = function() {
+  //   return "You will lost the game on page reload...!";
+  // };
+</script>

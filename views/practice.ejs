@@ -1,0 +1,307 @@
+<link rel="stylesheet" href="css/chat.css" />
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+
+    <div class="container">
+      <div class="row" id="video-showcase"></div>
+      <div class="row mt-3">
+        <div class="col col-4">
+          <div class="chat_window">
+            <ul class="messages chat_area"></ul>
+
+            <div class="bottom_wrapper clearfix">
+              <div class="message_input_wrapper">
+                <input class="message_input" placeholder="Chat here..." />
+              </div>
+              <div class="send_message" id="send_chat">
+                <div class="icon"></div>
+                <div class="text">Send</div>
+              </div>
+            </div>
+          </div>
+          <div class="message_template">
+            <li class="message">
+              <div class="text_wrapper">
+                <div class="text"></div>
+              </div>
+            </li>
+          </div>
+        </div>
+
+        <div class="col col-6">
+          <div class="container">
+            <%#
+            <div id="board" class="" style="width: 500px;"></div>
+            %>
+            <h1>Coming soon...!</h1>
+          </div>
+        </div>
+        <div class="col col-2">
+          <div id="player"></div>
+          <div id="roomNumbers">Loading...</div>
+          <div id="state">Join Game</div>
+        </div>
+      </div>
+    </div>
+    <!-- /#page-content-wrapper -->
+  </div>
+</div>
+<script>
+  var send_chat_btn = document.getElementById("send_chat");
+  var send_chat_text = document.getElementsByClassName("message_input")[0];
+  var messages_container = document.getElementsByClassName("chat_area")[0];
+
+  game = new Chess();
+  var socket = io("", {
+    query: {
+      mode: "p2p"
+    }
+  });
+  var color = "white";
+  var players;
+  var roomId = 1;
+  var name = "Guest";
+  var play = true;
+  var canMove = true;
+
+  var room = document.getElementById("room");
+  var roomNumber = document.getElementById("roomNumbers");
+  // var button = document.getElementById("button");
+  var state = document.getElementById("state");
+
+  var connect = function() {
+    // roomId = room.value;
+    // alert("");
+    if (roomId !== "" && parseInt(roomId) <= 100) {
+      // room.remove();
+      roomNumber.innerHTML = "Game Number " + roomId;
+      // button.remove();
+      socket.emit("joined", roomId);
+    }
+  };
+
+  // window.onbeforeunload = function(event) {
+  //   return confirm("Are you sure to lose the game progress?");
+  // };
+
+  window.onload = connect;
+  socket.on("is_room_full", function(isRoomFull) {
+    document.body.style.display = "none";
+    window.location.href = "/full";
+  });
+
+  socket.on("user_left", function(data) {
+    if (canMove) {
+      // alert("Opponent has left the match.");
+      // board.clear;
+      // board.destroy
+      state.innerHTML = "Game ended (Opponent has left the match).";
+      // window.location.reload();
+    }
+  });
+
+  socket.on("play", function(msg) {
+    if (msg == roomId) {
+      play = false;
+      state.innerHTML = "Game in Progress";
+    }
+    // console.log(msg)
+  });
+
+  socket.on("move", function(msg) {
+    if (msg.room == roomId) {
+      game.move(msg.move);
+      board.position(game.fen());
+      console.log("moved");
+    }
+  });
+
+  send_chat_btn.addEventListener("click", function(e) {
+    var txt = send_chat_text.value;
+    if (txt) {
+      send_chat_msg(txt.trim());
+    } else {
+      //not exists
+    }
+  });
+
+  send_chat_text.addEventListener("keypress", function(e) {
+    if (e.which == 13) {
+      var txt = send_chat_text.value;
+      if (txt) {
+        send_chat_msg(txt.trim());
+      } else {
+        //not exists
+      }
+    }
+  });
+
+  function send_chat_msg(msg) {
+    socket.emit("user_chat_msg", {
+      name: name,
+      msg: msg
+    });
+    send_chat_text.value = "";
+    send_chat_text.focus();
+  }
+
+  socket.on("user_chat_msg_received", function(msgObj) {
+    var html = `<li class="message left appeared">
+                <div class="text_wrapper">
+                  <div class="text">
+                    <strong><i>${msgObj.name.toUpperCase()}: </i></strong>${
+      msgObj.msg
+    }
+                  </div>
+                </div>
+              </li>`;
+    messages_container.insertAdjacentHTML("beforeend", html);
+    messages_container.scrollTop = 20000000;
+  });
+
+  socket.on("audience", function(data) {
+    console.log("audience");
+    canMove = false;
+    document.getElementsByClassName("bottom_wrapper")[0].remove();
+  });
+  var removeGreySquares = function() {
+    $("#board .square-55d63").css("background", "");
+  };
+
+  var greySquare = function(square) {
+    var squareEl = $("#board .square-" + square);
+
+    var background = "#a9a9a9";
+    if (squareEl.hasClass("black-3c85d") === true) {
+      background = "#696969";
+    }
+
+    squareEl.css("background", background);
+  };
+
+  var onDragStart = function(source, piece) {
+    // do not pick up pieces if the game is over
+    // or if it's not that side's turn
+    if (
+      game.game_over() === true ||
+      play ||
+      (game.turn() === "w" && piece.search(/^b/) !== -1) ||
+      (game.turn() === "b" && piece.search(/^w/) !== -1) ||
+      (game.turn() === "w" && color === "black") ||
+      (game.turn() === "b" && color === "white")
+    ) {
+      return false;
+    }
+    // console.log({play, players});
+  };
+
+  var onDrop = function(source, target) {
+    if (!canMove) return "snapback";
+    removeGreySquares();
+
+    // see if the move is legal
+    var move = game.move({
+      from: source,
+      to: target,
+      promotion: "q" // NOTE: always promote to a queen for example simplicity
+    });
+    if (game.game_over()) {
+      state.innerHTML = "GAME OVER";
+      socket.emit("gameOver", roomId);
+    }
+
+    // illegal move
+    if (move === null) return "snapback";
+    else {
+      socket.emit("move", { move: move, board: game.fen(), room: roomId });
+    }
+  };
+
+  var onMouseoverSquare = function(square, piece) {
+    if (!canMove) return false;
+    // get list of possible moves for this square
+    var moves = game.moves({
+      square: square,
+      verbose: true
+    });
+
+    // exit if there are no moves available for this square
+    if (moves.length === 0) return;
+
+    // highlight the square they moused over
+    greySquare(square);
+
+    // highlight the possible squares for this piece
+    for (var i = 0; i < moves.length; i++) {
+      greySquare(moves[i].to);
+    }
+  };
+
+  var onMouseoutSquare = function(square, piece) {
+    if (!canMove) return false;
+    removeGreySquares();
+  };
+
+  var onSnapEnd = function() {
+    if (!canMove) return false;
+    board.position(game.fen());
+  };
+
+  socket.on("player", msg => {
+    var plno = document.getElementById("player");
+    color = msg.color;
+
+    plno.innerHTML = "Player " + msg.playerType + " : " + color;
+    players = msg.players;
+
+    if (players == 2) {
+      play = false;
+      socket.emit("play", msg.roomId);
+      state.innerHTML = "Game in Progress";
+    } else state.innerHTML = "Waiting for Second player";
+
+    var cfg = {
+      orientation: color,
+      draggable: true,
+      position: "start",
+      onDragStart: onDragStart,
+      onDrop: onDrop,
+      onMouseoutSquare: onMouseoutSquare,
+      onMouseoverSquare: onMouseoverSquare,
+      onSnapEnd: onSnapEnd
+    };
+
+    board = ChessBoard("board", cfg);
+
+    if (msg.preViousMoves.length > 0) {
+      for (var i = 0; i < msg.preViousMoves.length; i++) {
+        game.move(msg.preViousMoves[i]);
+        board.position(game.fen(), false);
+      }
+    }
+
+    if (msg.chatMessages) {
+      for (var i = 0; i < msg.chatMessages.length; i++) {
+        var html = `<li class="message left appeared">
+                <div class="text_wrapper">
+                  <div class="text">
+                    <strong><i>${msg.chatMessages[
+                      i
+                    ].name.toUpperCase()}: </i></strong>${
+          msg.chatMessages[i].msg
+        }
+                  </div>
+                </div>
+              </li>`;
+        messages_container.insertAdjacentHTML("beforeend", html);
+        messages_container.scrollTop = 20000000;
+      }
+    }
+    console.log("moved");
+  });
+  // console.log(color)
+
+  var board;
+</script>

@@ -1,0 +1,7 @@
+
+#### List of start wars planets
+POST http://localhost:5000/rooms/add
+
+{
+    "name" : "atif"
+}

@@ -1,0 +1,156 @@
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+
+    <div class="container">
+      <div class="row mt-3">
+        <div class="col">
+          <div class="container">
+            <h1 class="mt-4">Host a game</h1>
+            <form action="" method="GET" class="w-75">
+              <div class="form-group">
+                <input
+                  type="number"
+                  class="form-control"
+                  id="roomId"
+                  name="roomId"
+                  placeholder="RoomID ( between 0 and 10000)"
+                  value=""
+                  min="0"
+                  max="10000"
+                  required
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-group">
+                <input
+                  type="number"
+                  class="form-control"
+                  id="min"
+                  name="min"
+                  placeholder="Game time in minutes."
+                  value=""
+                  min="1"
+                  max="120"
+                  required
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-check-inline">
+                <label class="form-check-label">
+                  <input
+                    type="radio"
+                    class="form-check-input"
+                    name="color"
+                    value="white"
+                    required
+                    checked
+                  />White
+                </label>
+              </div>
+              <div class="form-check-inline">
+                <label class="form-check-label">
+                  <input
+                    type="radio"
+                    class="form-check-input"
+                    name="color"
+                    value="black"
+                    required
+                  />Black
+                </label>
+              </div>
+              <div class="form-check-inline">
+                <label class="form-check-label">
+                  <input
+                    type="radio"
+                    class="form-check-input"
+                    name="color"
+                    value="white"
+                    required
+                  />Random
+                </label>
+              </div>
+              <div class="form-group">
+                <button
+                  type="submit"
+                  id="submitPage"
+                  name="submitPage"
+                  value="submited"
+                  class="btn btn-primary mb-2"
+                >
+                  Host game
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="col">
+          <div class="container">
+            <h1 class="mt-4">Join a game</h1>
+            <form action="" method="GET" class="w-75">
+              <div class="form-group">
+                <input
+                  type="number"
+                  class="form-control"
+                  id="roomId"
+                  name="roomId"
+                  placeholder="RoomID ( between 0 and 10000)"
+                  value=""
+                  min="0"
+                  max="10000"
+                  required
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-group">
+                <button
+                  type="submit"
+                  id="submitPage"
+                  name="submitPage"
+                  value="submited"
+                  class="btn btn-primary mb-2"
+                >
+                  Join game
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <%if (displayJoinLink == 'true') { %>
+      <div class="row">
+        <div class="col">
+          <div class="container">
+            <p>
+              Share the link with friend to play the game
+              <b><%=fullUrl + '-' + min%></b>
+            </p>
+            <form method="GET" action="">
+              <div class="form-group">
+                <input
+                  type="hidden"
+                  name="roomId"
+                  placeholder="Page title here..."
+                  value="<%= roomHash + '-' + min %>"
+                />
+              </div>
+              <div class="form-group">
+                <button
+                  type="submit"
+                  name="submitJoinGame"
+                  value="submited"
+                  class="btn btn-primary mb-2"
+                >
+                  Join game
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <% } %>
+    </div>
+    <!-- /#page-content-wrapper -->
+  </div>
+</div>

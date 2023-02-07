@@ -1,0 +1,88 @@
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+    <span></span>
+    <% if (data.userInfo.role && data.userInfo.role !== 'student') { %>
+    <div class="container">
+      <h1 class="mt-4">Add Room</h1>
+      <% include ./partials/messages %>
+
+      <form class="w-75" action="/rooms/add" method="POST">
+        <div class="row">
+          <div class="col">
+            <input
+              type="text"
+              name="name"
+              class="form-control"
+              placeholder="Room Name"
+              required
+            />
+          </div>
+          <div class="col">
+            <input
+              type="text"
+              name="accessKey"
+              class="form-control"
+              placeholder="Access key"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            name="submitBtn"
+            class="btn btn-primary"
+            value="done"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>
+    <% } %>
+    <hr />
+    <div class="container">
+      <h1 class="mt-4">All Rooms</h1>
+      <table class="table table-striped table-inverse table-responsive">
+        <thead class="thead-inverse">
+          <tr>
+            <th>ROOM ID</th>
+            <th>Name</th>
+            <% if (data.userInfo.role !== 'student') { %>
+            <th>Access Key</th>
+            <% } %>
+            <td>Options</td>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (typeof rooms !== 'undefined' && rooms.length > 0) { %> <%
+          rooms.forEach((room) => { %>
+          <tr>
+            <td scope="row"><%= room._id %></td>
+            <td><%= room.name %></td>
+            <% if (data.userInfo.role !== 'student') { %>
+            <td><%= room.accessKey %></td>
+            <% } %>
+            <td>
+              <a href="/rooms/join/<%= room._id %>" class="btn btn-success"
+                >Join</a
+              >
+              <a
+                href="/rooms/delete/<%= room._id %>"
+                class="text-danger"
+                onclick="return confirm('Are you sure to delete the room?')"
+                >Delete</a
+              >
+            </td>
+          </tr>
+          <% }) %> <% } else { %>
+          <tr>
+            <td colspan="4">No user found</td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <!-- /#page-content-wrapper -->
+</div>

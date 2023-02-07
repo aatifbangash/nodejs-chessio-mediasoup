@@ -1,0 +1,919 @@
+<link rel="stylesheet" href="/css/chat.css" />
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+
+    <div class="container">
+      <div class="row" id="video-showcase"></div>
+      <div class="row mt-3">
+        <div class="col col-3">
+          <div class="chat_window">
+            <ul class="messages chat_area">
+              <!-- <li class="message left appeared">
+                <div class="text_wrapper">
+                  <div class="text">
+                    <strong>ATIF: </strong>hi to everyone!
+                    <pre><%= JSON.stringify(data.userInfo, null, 2)%></pre>
+                    <pre><%= JSON.stringify(data.room, null, 2)%></pre> 
+                  </div>
+                </div>
+              </li> -->
+            </ul>
+
+            <div class="bottom_wrapper clearfix">
+              <div class="message_input_wrapper">
+                <input class="message_input" placeholder="Chat here..." />
+              </div>
+              <div class="send_message" id="send_chat">
+                <div class="icon"></div>
+                <div class="text">Send</div>
+              </div>
+            </div>
+          </div>
+          <div class="message_template">
+            <li class="message">
+              <div class="text_wrapper">
+                <div class="text"></div>
+              </div>
+            </li>
+          </div>
+        </div>
+        <div class="col col-6">
+          <div class="container">
+            <div id="gameBoard" class="" style="width: 500px;"></div>
+            <div id="promotion-dialog">
+              <ol id="promote-to">
+                <li class="ui-state-default">
+                  <span class="piece-name">q</span
+                  ><img class="promotion-piece-q promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">r</span
+                  ><img class="promotion-piece-r promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">n</span
+                  ><img class="promotion-piece-n promotion-piece" />
+                </li>
+                <li class="ui-state-default">
+                  <span class="piece-name">b</span
+                  ><img class="promotion-piece-b promotion-piece" />
+                </li>
+              </ol>
+            </div>
+            <% if (data.userInfo.role !== 'student') { %>
+              <div>
+              <form class="mt-1">
+                <div class="form-row align-items-center">
+                  <div class="col-10">
+                    <input 
+                      type="text" 
+                      class="form-control mb-2" 
+                      id="fenstring_text" 
+                      placeholder="type fen string here..."
+                      value="" 
+                    >
+                  </div>
+                  <div class="col-auto">
+                    <button type="button" name="fenstring_btn" id="fenstring_btn" class="btn btn-primary mb-2">Run</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <% } %>
+          </div>
+        </div>
+        <div class="col col-3">
+          <div class="chat_window">
+            <ul class="messages" style="overflow:hidden;">
+              <li class="message left appeared" id="pgn-viewer"></li>
+            </ul>
+            <% if (data.userInfo.role !== 'student') { %>
+            <div class="bottom_wrapper clearfix">
+              <div class="pgn-btns">
+                <a
+                  href="#"
+                  class="previous round nav-btns"
+                  onclick="return prevMove();"
+                  >&#8249;</a
+                >
+                <a
+                  href="#"
+                  class="next round nav-btns"
+                  onclick="return nextMove();"
+                  >&#8250;</a
+                >
+                <div style="clear:both;"></div>
+              </div>
+              <div
+                class="message_input_wrapper"
+                style="width: 100%;margin-top:5px;"
+              >
+                <textarea
+                  class="message_input"
+                  id="pgn"
+                  placeholder="Type pgn."
+                  style="padding-top: 13px;resize: none; overflow: hidden;"
+                ></textarea>
+              </div>
+              <div class="send_message" id="load-pgn" style="width: 100%;">
+                <div class="icon"></div>
+                <div class="text">PGN</div>
+              </div>
+            </div>
+            <% } else { %>
+            <textarea
+              class="message_input"
+              id="pgn"
+              placeholder="Type pgn here."
+              style="padding-top: 13px;display: none;"
+            ></textarea>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- /#page-content-wrapper -->
+  </div>
+
+  <script>
+          var send_chat_btn = document.getElementById('send_chat');
+          var send_chat_text = document.getElementsByClassName('message_input')[0];
+          var messages_container = document.getElementsByClassName('chat_area')[0];
+
+          var board;
+          var game;
+
+          var whiteSquareGrey = '#a9a9a9'
+          var blackSquareGrey = '#696969'
+
+          var current_piece = -1;
+
+          var piece_theme, promote_to, promoting, promotion_dialog;
+      piece_theme = 'img/chesspieces/wikipedia/{piece}.png';
+         promotion_dialog = $('#promotion-dialog');
+          var rightClick = false;
+          var arrow_start;
+          var arrow_path = '';
+
+          var name = "<%= data.userInfo.name%>";
+          var localUsers = [];
+          var roomId = "<%= data.room.name%>";
+          var peerName = "<%= data.userInfo.email%>";// + Math.floor(Math.random() * 100)
+          var userRole = "<%= data.userInfo.role%>";
+          var teacherData = null;
+
+          // Transport for sending our media.
+          var sendTransport;
+          // Transport for receiving media from remote Peers.
+          var recvTransport;
+
+          if (!roomId || !peerName) {
+              alert(
+                "RoomId or Username is missing"
+              );
+              throw new Error("RoomId and Username weren't set properly");
+          }
+
+          var socket = io("", {
+            query: {
+              room: roomId,
+              userName: peerName,
+              userRole: userRole
+            }
+          });
+
+          socket.on("connect", function (data) {
+            // console.log('client connected');
+            socket.on('is_room_full', function(isRoomFull){
+              if(isRoomFull == true) {
+                document.body.style.display = 'none';
+                window.location.href = '/full';
+              }
+            })
+
+            const room = new mediasoupClient.Room();
+
+            room
+                .join(peerName)
+                .then(peers => {
+                  //console.log("PEERS:", peers);
+
+                  // Create the Transport for sending our media.
+                  sendTransport = room.createTransport("send");
+                  // Create the Transport for receiving media from remote Peers.
+                  recvTransport = room.createTransport("recv");
+
+                  peers.forEach(peer => handlePeer(peer));
+                })
+                .then(() => {
+                  // Get our mic and camera
+                  return navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: true
+                  });
+                })
+                .then(stream => {
+                  const audioTrack = stream.getAudioTracks()[0];
+                  const videoTrack = stream.getVideoTracks()[0];
+
+                  // if (peerName === "atif") {
+                  // Show local stream
+                  const localStream = new MediaStream([videoTrack, audioTrack]);
+                  const video = document.createElement("video");
+                  video.setAttribute("style", "max-width: 150px; margin:0 auto; border-radius: 10px;");
+                  video.style.display = 'block';
+                  video.srcObject = localStream;
+                  document.querySelector('[data-idx="' + peerName + '"]').appendChild(video);
+                  // document.getElementById("video-showcase").appendChild(video);
+                  video.muted = true;
+                  video.play();
+                  // }
+
+                  // Create Producers for audio and video.
+                  const audioProducer = room.createProducer(audioTrack);
+                  const videoProducer = room.createProducer(videoTrack);
+
+                  // Send our audio.
+                  audioProducer.send(sendTransport);
+                  // Send our video.
+                  videoProducer.send(sendTransport);
+                });
+
+                // Event fired by local room when a new remote Peer joins the Room
+              room.on("newpeer", peer => {
+                // console.log("A new Peer joined the Room:", peer.name);
+
+                // Handle the Peer.
+                handlePeer(peer);
+              });
+
+              // Event fired by local room
+              room.on("request", (request, callback, errback) => {
+                // console.log("REQUEST:", request);
+                socket.emit("mediasoup-request", request, (err, response) => {
+                  if (!err) {
+                    // Success response, so pass the mediasoup response to the local Room.
+                    callback(response);
+                  } else {
+                    errback(err);
+                  }
+                });
+              });
+
+              // Be ready to send mediaSoup client notifications to our remote mediaSoup Peer
+              room.on("notify", notification => {
+                // console.log("New notification from local room:", notification);
+                socket.emit("mediasoup-notification", notification);
+              });
+
+              // Handle notifications from server, as there might be important info, that affects stream
+              socket.on("mediasoup-notification", notification => {
+                // console.log("New notification came from server:", notification);
+                room.receiveNotification(notification);
+              });
+          });
+
+          /**
+             * Handles specified peer in the room
+             *
+             * @param peer
+             */
+             function handlePeer(peer) {
+              // Handle all the Consumers in the Peer.
+              peer.consumers.forEach(consumer => handleConsumer(consumer));
+
+              // Event fired when the remote Room or Peer is closed.
+              peer.on("close", (c, d) => {
+                // console.log("ddddddd", d);
+                // console.log("Remote Peer closed", c);
+              });
+
+              // Event fired when the remote Peer sends a new media to mediasoup server.
+              peer.on("newconsumer", consumer => {
+                // console.log("Got a new remote Consumer");
+
+                // Handle the Consumer.
+                handleConsumer(consumer);
+              });
+            }
+
+            /**
+             * Handles specified consumer
+             *
+             * @param consumer
+             */
+            function handleConsumer(consumer) {
+              // alert("yes");
+
+              // Receive the media over our receiving Transport.
+              consumer.receive(recvTransport).then(track => {
+                // console.log(
+                //   "Receiving a new remote MediaStreamTrack:",
+                //   consumer.kind
+                // );
+
+                // Attach the track to a MediaStream and play it.
+                const stream = new MediaStream();
+                stream.addTrack(track);
+
+                if (consumer.kind === "video") {
+                  const video = document.createElement("video");
+                  video.setAttribute("style", "max-width: 150px; margin:0 auto; border-radius: 10px;");
+                  video.setAttribute("playsinline", "");
+                  video.style.display = 'block';
+                  video.srcObject = stream;
+                  document.querySelector('[data-idx="' + consumer._peer._name + '"]').appendChild(video);
+                  // document.getElementById("video-showcase").appendChild(video);
+                  video.play();
+                }
+                if (consumer.kind === "audio") {
+                  const audio = document.createElement("audio");
+                  audio.srcObject = stream;
+                  document.querySelector('[data-idx="' + consumer._peer._name + '"]').appendChild(audio);
+                  // document.getElementById("video-showcase").appendChild(audio);
+                  if(teacherData && teacherData.name == consumer._peer._name){
+                    audio.muted = false;
+                  } else {
+                    audio.muted = true;
+                  }
+                  audio.id = consumer._peer._name;
+                  audio.play();
+                }
+              });
+
+              // Event fired when the Consumer is closed.
+              consumer.on("close", (c, ad) => {
+                // console.log(ad);
+                // console.log("Consumer closed", c);
+              });
+            }
+
+          window.onload = function () {
+            initGame();
+          };
+
+          // init promotion piece dialog
+         // $("#promote-to").selectable({
+         //   stop: function() {
+         //     $( ".ui-selected", this ).each(function() {
+         //       var selectable = $('#promote-to li');
+         //       var index = selectable.index(this);
+         //       if (index > -1) {
+         //         var promote_to_html = selectable[index].innerHTML;
+         //         var span = $('<div>' + promote_to_html + '</div>').find('span');
+         //         promote_to = span[0].innerHTML;
+         //       }
+         //       promotion_dialog.dialog('close');
+         //       $('.ui-selectee').removeClass('ui-selected');
+         //       updateBoard(board);
+         //     });
+         //   }
+         // });
+
+          var pgnText;
+          var globalPGN = [];
+
+          var initGame = function () {
+            var cfg = {
+              position: 'start',
+              overlay: true // new added
+            };
+            <% if (data.userInfo.role !== 'student') { %>
+              cfg.draggable = true;
+              cfg.onDrop = handleMove;
+              cfg.onDragStart = onDragStart;
+              cfg.onMouseoutSquare = onMouseoutSquare;
+               cfg.onMouseoverSquare = onMouseoverSquare;
+               cfg.onSnapEnd = onSnapEnd;
+            <% } %>
+            board = new ChessBoard('gameBoard', cfg);
+            game = new Chess();
+
+
+          };
+          <% if (data.userInfo.role !== 'student') { %>
+          $(document).ready(function() {
+                // $('.square-55d63').on('mousedown', function (event) {
+                $('body').on('mousedown', '.square-55d63', function(event) {
+                   if ((('which' in event) && (event.which == 1)) || (('button' in event) && (event.button == 1))){
+                     ///
+                     board.clearAnnotation();
+                 } else {
+                     rightClick = true;
+                 }
+                });
+
+                // $('.square-55d63').on('mouseup', function (event) {
+                $('body').on('mouseup', '.square-55d63', function(event) {
+                   if ((('which' in event) && (event.which == 1)) || (('button' in event) && (event.button == 1))){
+                     ///
+                     
+                 } else {
+
+                     if(arrow_path && arrow_path.indexOf('undefined') === -1){ //string doesn't contain undefined
+                        socket.emit('draw_arrow', arrow_path);
+                        arrow_path = '';
+                      }
+
+                     rightClick = false;
+                 }
+                });
+            });
+
+            document.addEventListener("contextmenu", function (e) {
+              e.preventDefault();
+            });
+          <% } %>
+
+          function updateBoard(board) {
+            board.position(game.fen(), false);
+            promoting = false;
+            onSnapEnd();
+          }
+
+          function onDragStart (source, piece) {
+            
+            <% if (data.userInfo.role !== 'student') { %>
+              if ((('which' in event) && (event.which == 3)) || (('button' in event) && (event.button == 3))){
+                   rightClick = true;
+              }
+            <% } %>
+
+            if(rightClick == true){
+
+              arrow_start = source;
+              return false
+            }else{
+                // do not pick up pieces if the game is over
+              if (game.game_over()) return false
+
+              // or if it's not that side's turn
+              if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+              return false
+              }
+            }
+          }
+
+          function onMouseoutSquare (square, piece) {
+            // board.clearAnnotation(); // new added
+           removeGreySquares()
+          }
+
+          function removeGreySquares () {
+           $('#gameBoard .square-55d63').css('background', '')
+         }
+
+         function onSnapEnd () {
+          board.clearAnnotation();
+         board.position(game.fen())
+         generatePGN([game.pgn()]);
+          }
+
+         function greySquare (square) {
+           var $square = $('#gameBoard .square-' + square)
+
+           var background = whiteSquareGrey
+           if ($square.hasClass('black-3c85d')) {
+         	background = blackSquareGrey
+           }
+
+           $square.css('background', background)
+         }
+
+         var pgnViewerEle = document.getElementById('load-pgn');
+         if(pgnViewerEle) {
+           pgnViewerEle.addEventListener('click', function() {
+             var pgnValue = document.getElementById('pgn');
+             if(!pgnValue.value) {
+               if(confirm("Do you want to rest the chessboard positions?.")){ //rest board position if nothing is passed as a pgn
+                 generatePGN('');
+               } else {
+                 return false;
+               }
+             } else {
+               generatePGN(''); //load pgn
+             }
+
+             <% if (data.userInfo.role !== 'student') { %>
+             var typedPgn = [document.getElementById('pgn').value];
+             socket.emit('load_pgn', typedPgn);
+             <% } %>
+
+             pgnValue.value = '';
+           })
+         }
+
+         function generatePGN(pgn){
+       	var pgnArray = [];
+       	var pgnContainer = document.getElementById('pgn-viewer').innerHTML = '';
+       	if(pgn == ''){
+       		pgn = [document.getElementById('pgn').value];
+       	}
+
+       	game.load_pgn(pgn.join('\n'));
+       	game.fen();
+       	board.position(game.fen())
+       	pgnText = game.pgn();
+       	//pgnText = document.getElementById('pgn').value;
+       	var regex = /\[(.*?)\]/;
+       	const remove = s => s.replace(regex, "");
+       	while(pgnText.match(regex)){
+       		pgnText = remove(pgnText);
+       	}
+       	var regex = /\{(.*?)\}/;
+       	while(pgnText.match(regex)){
+       		pgnText = remove(pgnText);
+       	}
+       	pgnText = pgnText.replace(/(\r\n|\n|\r)/gm, "");
+       	while(pgnText.indexOf(".") > -1){
+       		pgnText = pgnText.replace(pgnText.substring(pgnText.indexOf(".")-2, pgnText.indexOf(".") + 1),"");
+       	}
+       	pgnArray = pgnText.split(" ");
+       	for( var i = pgnArray.length; i--;){
+       		if ( pgnArray[i] === '') pgnArray.splice(i, 1);
+       	}
+       	//pgnArray = mergeIndexes(pgnArray);
+       	globalPGN = pgnArray;
+         loadPGN(pgnArray);
+         current_piece = globalPGN.length - 1;
+       }
+
+       function loadPGN(arr){
+           var pgnContainer = document.getElementById('pgn-viewer');
+           var numbering = 1; // new added
+       	  for(var i=0;i<arr.length;i++){
+            if(i % 2 == 0){ pgnContainer.innerHTML += numbering+"- "; } // new added
+       	  	pgnContainer.innerHTML += "<button type='button' data-pgnIdx='"+i+"' class='btn btn-primary btn-sm m-1 pgn-list' onclick='emitNewPgn("+i+");'>"+arr[i]+"</button>";
+            if(i % 2 == 1){ numbering++; pgnContainer.innerHTML += "<br />"; } // new added
+           }
+           pgnContainer.scrollTop = 20000000;
+
+       }
+
+       function emitNewPgn(i){
+         <% if (data.userInfo.role !== 'student') { %>
+          $('.pgn-list').removeClass('active');
+          $('[data-pgnIdx="' + i + '"]').addClass('active');
+
+         socket.emit('new_pgn', i);
+         generateNewPGN(i);
+         <% } %>
+       }
+
+       function generateNewPGN(ele){
+         var newPGN = '';
+         var count = 1;
+          for (var i=0;i<=ele;i++){
+          	  if(i%2 == 0){
+          	  	newPGN += count+'.'+globalPGN[i];
+          	  	count++;
+          	  }else{
+          	  	newPGN += ' '+globalPGN[i]+' ';
+          	  }
+          }
+
+          game.load_pgn([newPGN].join('\n'));
+          game.fen();
+          board.position(game.fen())
+
+          current_piece = ele;
+          }
+
+          var handleMove = function (source, target, piece, newPos, oldPos, orientation) {
+            removeGreySquares()
+            move_cfg = {
+               from: source,
+               to: target,
+               promotion: 'q'
+              };
+
+            var move = game.move(move_cfg);
+            var boardPosition = ChessBoard.objToFen(newPos);
+            <% if (data.userInfo.role !== 'student') { %>
+              if (move === null) {
+                return 'snapback';
+              } else {
+                // socket.emit('move', {
+                //   move:move,
+                //   position: boardPosition
+                // });
+                game.undo(); //move is ok, now we can go ahead and check for promotion
+              }
+            <%} else { %>
+              if (move === null) {
+                return 'snapback';
+              }
+            <% } %>
+
+           var source_rank = source.substring(2,1);
+           var target_rank = target.substring(2,1);
+           var piece = game.get(source).type;
+
+              if (piece === 'p' && ((source_rank === '7' && target_rank === '8') || (source_rank === '2' && target_rank === '1'))) {
+
+                 	promoting = true;
+               // get piece images
+               $('.promotion-piece-q').attr('src', getImgSrc('q'));
+               $('.promotion-piece-r').attr('src', getImgSrc('r'));
+               $('.promotion-piece-n').attr('src', getImgSrc('n'));
+               $('.promotion-piece-b').attr('src', getImgSrc('b'));
+
+               //show the select piece to promote to dialog
+               promotion_dialog.dialog({
+                 modal: true,
+                 height: 46,
+                 width: 184,
+                 resizable: true,
+                 draggable: false,
+                 close: onDialogClose,
+                 closeOnEscape: false,
+                 dialogClass: 'noTitleStuff'
+               }).dialog('widget').position({
+                 of: $('#gameBoard'),
+                 my: 'middle middle',
+                 at: 'middle middle',
+               });
+               //the actual move is made after the piece to promote to
+               //has been selected, in the stop event of the promotion piece selectable
+               return;
+
+             	  }
+             	  // no promotion, go ahead and move
+            	  makeMove(game, move_cfg);
+          };
+
+          var onDialogClose = function() {
+             //console.log(promote_to);
+             move_cfg.promotion = promote_to;
+             makeMove(game, move_cfg);
+           }
+
+     function makeMove(game, cfg) {
+             // see if the move is legal
+
+             var move = game.move(cfg);
+             if (move === null) {
+                return 'snapback';
+              } else {
+              //  console.log(game.pgn());
+                board.position(game.fen())
+                socket.emit('move', {
+                  move:move,
+                  pgn:game.pgn()
+                });
+              }
+            }
+
+            // init promotion piece dialog
+            $( function() {
+          $("#promote-to").selectable({
+            stop: function() {
+              $( ".ui-selected", this ).each(function() {
+                var selectable = $('#promote-to li');
+                var index = selectable.index(this);
+                if (index > -1) {
+                  var promote_to_html = selectable[index].innerHTML;
+                  var span = $('<div>' + promote_to_html + '</div>').find('span');
+                  promote_to = span[0].innerHTML;
+                }
+                promotion_dialog.dialog('close');
+                $('.ui-selectee').removeClass('ui-selected');
+                updateBoard(board);
+              });
+            }
+          });
+         } );
+            function getImgSrc(piece) {
+            return piece_theme.replace('{piece}', game.turn() + piece.toLocaleUpperCase());
+           }
+
+          function onMouseoverSquare (square, piece) {
+          // get list of possible moves for this square
+          var moves = game.moves({
+        	square: square,
+        	verbose: true
+          })
+
+          if(rightClick == false){
+            // exit if there are no moves available for this square
+            if (moves.length === 0) return
+          }
+
+          // highlight the square they moused over
+          greySquare(square)
+
+          if(rightClick == true){
+            board.clearAnnotation();
+            arrow_path = arrow_start + ' ' + square;
+            if(arrow_start) {
+              board.addArrowAnnotation(arrow_start, square);
+            }
+          }
+          // highlight the possible squares for this piece
+          for (var i = 0; i < moves.length; i++) {
+          // board.addArrowAnnotation(square, moves[i].to);  // new added
+        	greySquare(moves[i].to)
+          }
+        }
+
+          // called when the server calls socket.broadcast('move')
+          socket.on('move', function (msg) {
+            board.clearAnnotation();
+            game.move(msg);
+
+            board.position(game.fen()); // fen is the board layout
+            // console.log(game.pgn());
+            generatePGN([game.pgn()]); //generate pgn
+          });
+
+          socket.on('load_pgn', function (pgn) {
+           generatePGN(pgn);
+          });
+
+          socket.on('draw_arrow', function (arrow) {
+            var arrowObj = arrow.split(' ')
+            board.clearAnnotation();
+            if(arrowObj.length > 0) {
+              board.addArrowAnnotation(arrowObj[0], arrowObj[1]);              
+            }
+          });
+
+          socket.on('new_pgn', function (idx) {
+           generateNewPGN(idx);
+          });
+
+          socket.on('set_board_position', function(obj){
+            var fen = obj.move;
+            //  console.log(obj.pgnString)
+            if(obj.pgnString != '' && typeof obj.pgnString == 'object'){
+             generatePGN(obj.pgnString);
+            } else if (obj.pgnString != '' && typeof obj.pgnString == 'string') {
+             generatePGN([obj.pgnString]);
+            } else {
+
+            if(fen.length > 0) {
+              for(var i =0; i < fen.length; i++) {
+                if(typeof game == undefined) {
+                  window.location.reload();
+                }
+                game.move(fen[i]);
+                board.position(game.fen(), false);
+                generatePGN([game.pgn()]);
+              }
+            }
+           }
+          })
+          socket.on('all_connected_users', function (data) {
+
+            teacherData = data.teacherData;
+
+            var divParent = document.querySelector('#video-showcase');
+            divParent.innerHTML = '';
+            data.room.users.forEach((element, i, parentArray) => {
+              localUsers.push(element); //push username to local users[]
+
+              var div = document.createElement('div');
+              div.classList.add('col', 'col-2');
+              div.setAttribute('data-idx', element);
+              // divTxtNode = document.createTextNode(element);
+              // div.appendChild(divTxtNode);
+              <% if (data.userInfo.role !== 'student') { %>
+                  div.innerHTML = '<a class="text-warning" id="handle-' + element + '" onclick="toggleMute(\'' + element + '\')" href="javascript:void(0);">' + element + "</a>";
+              <% } else { %>
+                  divTxtNode = document.createTextNode(element);
+                  div.appendChild(divTxtNode);
+              <% } %>
+              divParent.appendChild(div);
+            });
+
+            if(data.chatMessages) {
+              for(var i = 0; i< data.chatMessages.length; i++) {
+                  var html = `<li class="message left appeared">
+                      <div class="text_wrapper">
+                        <div class="text">
+                          <strong><i>${data.chatMessages[i].name.toUpperCase()}: </i></strong>${data.chatMessages[i].msg}
+                        </div>
+                      </div>
+                    </li>`;
+                  messages_container.insertAdjacentHTML('beforeend', html);
+                  messages_container.scrollTop = 20000000;
+              }
+            }
+          });
+
+          function toggleMute(id) {
+            var ele = document.getElementById(id);
+            if(ele) {
+              if(ele.muted) {
+                ele.muted = false;
+                document.getElementById('handle-' + id).classList = 'text-success';
+              }else {
+                ele.muted = true;
+                document.getElementById('handle-' + id).classList = 'text-warning';
+              }
+            }
+          }
+
+          socket.on('new_user_joined', function(newUser) {
+
+            localUsers.push(newUser);
+
+            var divParent = document.querySelector('#video-showcase');
+            var div = document.createElement('div');
+              div.classList.add('col', 'col-2');
+              div.setAttribute('data-idx', newUser);
+              // divTxtNode = document.createTextNode(newUser);
+              // div.appendChild(divTxtNode);
+              <% if (data.userInfo.role !== 'student') { %>
+              div.innerHTML = '<a class="text-warning" id="handle-' + newUser + '" onclick="toggleMute(\'' + newUser + '\')" href="javascript:void(0);">' + newUser + "</a>";
+              <% } else { %>
+                  divTxtNode = document.createTextNode(newUser);
+                  div.appendChild(divTxtNode);
+              <% } %>
+              divParent.appendChild(div);
+          })
+
+          socket.on('user_left', function (data) {
+            var index = localUsers.indexOf(data.userName);
+            if (index > -1) {
+              localUsers.splice(index, 1);
+            }
+
+            document.querySelector('[data-idx="' + data.userName + '"]').remove();
+          });
+          send_chat_btn.addEventListener('click', function(e) {
+            var txt = send_chat_text.value;
+            if(txt) {
+              send_chat_msg(txt.trim());
+            } else {
+              //not exists
+            }
+          })
+
+          send_chat_text.addEventListener('keypress', function(e) {
+            if (e.which == 13) {
+              var txt = send_chat_text.value;
+              if(txt) {
+                send_chat_msg(txt.trim());
+              } else {
+                //not exists
+              }
+            }
+          })
+
+          function send_chat_msg(msg) {
+            socket.emit('user_chat_msg', {
+              name: name,
+              msg: msg
+            });
+            send_chat_text.value = '';
+            send_chat_text.focus();
+          }
+
+          socket.on('user_chat_msg_received', function (msgObj) {
+            var html = `<li class="message left appeared">
+                      <div class="text_wrapper">
+                        <div class="text">
+                          <strong><i>${msgObj.name.toUpperCase()}: </i></strong>${msgObj.msg}
+                        </div>
+                      </div>
+                    </li>`;
+
+            messages_container.insertAdjacentHTML('beforeend', html);
+            messages_container.scrollTop = 20000000;
+          });
+
+    function prevMove(){
+    	if(current_piece >= 0){
+        emitNewPgn(current_piece - 1);
+        // $('.pgn-list').removeClass('active');
+        // $('[data-pgnIdx="' + (current_piece - 1) + '"]').addClass('active');
+    		// generateNewPGN(parseInt(current_piece)-1);
+      }
+      return false;
+    }
+
+    function nextMove(){
+    	if(current_piece < globalPGN.length - 1 && current_piece >= -1){
+        emitNewPgn(current_piece + 1);
+        // $('.pgn-list').removeClass('active');
+        // $('[data-pgnIdx="' + (current_piece + 1) + '"]').addClass('active');
+    		// generateNewPGN(parseInt(current_piece)+1);
+      }
+      return false;
+    }
+    <% if (data.userInfo.role !== 'student') { %>
+    document.getElementById('fenstring_btn').addEventListener('click', function(e) {
+        var fenStringTxt = document.getElementById('fenstring_text').value
+        if(fenStringTxt) {
+          game.load(fenStringTxt)
+          board.position(game.fen())
+        }
+        return false;
+    })
+    <% } %>
+  </script>
+</div>

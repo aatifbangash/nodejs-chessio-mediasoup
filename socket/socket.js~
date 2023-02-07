@@ -1,0 +1,239 @@
+exports = module.exports = function(io) {
+  const mediasoup = require("mediasoup");
+  const config = require("../config/config");
+
+  // let users = {};
+  let rooms = {};
+  const mediaRooms = new Map();
+
+  // MediaSoup server
+  const mediaServer = mediasoup.Server({
+    numWorkers: null, // Use as many CPUs as available.
+    logLevel: config.mediasoup.logLevel,
+    logTags: config.mediasoup.logTags,
+    rtcIPv4: config.mediasoup.rtcIPv4,
+    rtcIPv6: config.mediasoup.rtcIPv6,
+    rtcAnnouncedIPv4: config.mediasoup.rtcAnnouncedIPv4,
+    rtcAnnouncedIPv6: config.mediasoup.rtcAnnouncedIPv6,
+    rtcMinPort: config.mediasoup.rtcMinPort,
+    rtcMaxPort: config.mediasoup.rtcMaxPort
+  });
+
+  io.on("connection", function(socket) {
+    let { room, userName, userRole } = socket.handshake.query;
+    // console.log("new connection " + socket.id);
+
+    // Used for mediaSoup mediaRoom
+    let mediaRoom = null;
+    // Used for mediaSoup peer
+    let mediaPeer = null;
+    let roomId = room;
+    let peerName = userName;
+
+    if (mediaRooms.has(roomId)) {
+      mediaRoom = mediaRooms.get(roomId);
+    } else {
+      mediaRoom = mediaServer.Room(config.mediasoup.mediaCodecs);
+      mediaRooms.set(roomId, mediaRoom);
+      mediaRoom.on("close", () => {
+        mediaRooms.delete(roomId);
+      });
+    }
+
+    if (rooms[room] === undefined) {
+      //if empty initalize room in rooms datastore
+      rooms[room] = {
+        users: [], //all users in a room
+        moves: [], //all moves of the users,
+        chatMessages: [],
+        totalUser: 0,
+        pgnString: "",
+        teacherData: null
+      };
+      // console.log("room created");
+    }
+
+    if (rooms[room].totalUser >= 6) {
+      socket.emit("is_room_full", true);
+    }
+
+    //add user details to the socket itself
+    socket.userData = { room, userName };
+
+    //add socket to users datastore
+    // users[socket.id] = socket;
+    // users[socket.id].userData = { room, userName }; //room, userName
+
+    //add user to the room and increment the users counter
+    rooms[room].users.push(userName);
+    rooms[room].totalUser = rooms[room].totalUser + 1;
+
+    if (userRole == "teacher") {
+      rooms[room].teacherData = {
+        role: userRole,
+        name: userName
+      };
+    }
+
+    // socket joined the specific room
+    // console.log("User joined the room " + room);
+    socket.join(room);
+
+    //emit room details to all users of the room
+    socket.emit("all_connected_users", {
+      room: rooms[room],
+      teacherData: rooms[room].teacherData
+    });
+
+    //to other only in room
+    socket.to(room).emit("new_user_joined", userName);
+
+    //emit moves if any move happend
+    if (rooms[room].moves.length > 0 || rooms[room].pgnString != "") {
+      socket.emit("set_board_position", {
+        move: rooms[room].moves,
+        pgnString: rooms[room].pgnString
+      });
+    }
+
+    socket.on("mediasoup-request", (request, cb) => {
+      switch (request.method) {
+        case "queryRoom":
+          mediaRoom
+            .receiveRequest(request)
+            .then(response => cb(null, response))
+            .catch(error => cb(error.toString()));
+          break;
+
+        case "join":
+          mediaRoom
+            .receiveRequest(request)
+            .then(response => {
+              // Get the newly created mediasoup Peer
+              mediaPeer = mediaRoom.getPeerByName(peerName);
+
+              handleMediaPeer(mediaPeer);
+
+              // Send response back
+              cb(null, response);
+            })
+            .catch(error => cb(error.toString()));
+          break;
+
+        default:
+          if (mediaPeer) {
+            mediaPeer
+              .receiveRequest(request)
+              .then(response => cb(null, response))
+              .catch(error => cb(error.toString()));
+          }
+      }
+    });
+
+    socket.on("mediasoup-notification", notification => {
+      // console.debug("Got notification from client peer", notification);
+
+      // NOTE: mediasoup-client just sends notifications with target 'peer'
+      if (!mediaPeer) {
+        // console.error("Cannot handle mediaSoup notification, no mediaSoup Peer");
+        return;
+      }
+
+      mediaPeer.receiveNotification(notification);
+    });
+
+    // emit move to all other users in the room
+    socket.on("move", function(msg) {
+      // rooms[room].fen = msg.position;
+      rooms[room].pgnString = msg.pgn;
+      rooms[room].moves.push(msg.move);
+      socket.broadcast.to(room).emit("move", msg.move);
+    });
+
+    //load pgn
+    socket.on("load_pgn", function(pgn) {
+      rooms[room].pgnString = pgn;
+      rooms[room].moves = []; //rest moves after pgn load
+      socket.broadcast.to(room).emit("load_pgn", pgn);
+    });
+
+    socket.on("new_pgn", function(idx) {
+      // console.log(idx);
+      socket.broadcast.to(room).emit("new_pgn", idx);
+    });
+
+    // user chat msg
+    socket.on("user_chat_msg", function(msgObj) {
+      rooms[room].chatMessages.push(msgObj);
+      io.in(room).emit("user_chat_msg_received", msgObj);
+    });
+
+    socket.on("disconnect", function() {
+      // delete users[socket.id];
+      if (mediaPeer) {
+        mediaPeer.close(peerName);
+      }
+
+      if (rooms[socket.userData.room] === undefined) return;
+
+      let index = rooms[socket.userData.room].users.indexOf(
+        socket.userData.userName
+      );
+      if (index > -1) {
+        rooms[socket.userData.room].users.splice(index, 1);
+        rooms[socket.userData.room].totalUser =
+          rooms[socket.userData.room].totalUser - 1;
+
+        if (rooms[socket.userData.room].totalUser == 0) {
+          delete rooms[socket.userData.room];
+        }
+      }
+
+      io.in(room).emit("user_left", {
+        userName: socket.userData.userName
+      });
+      // console.log("disconnected " + socket.id);
+    });
+
+    /**
+     * Handles all mediaPeer events
+     *
+     * @param mediaPeer
+     */
+    const handleMediaPeer = mediaPeer => {
+      mediaPeer.on("notify", notification => {
+        // console.log("New notification for mediaPeer received:", notification);
+        socket.emit("mediasoup-notification", notification);
+      });
+
+      mediaPeer.on("newtransport", transport => {
+        // console.log("New mediaPeer transport:", transport.direction);
+        transport.on("close", originator => {
+          // console.log("Transport closed from originator:", originator);
+        });
+      });
+
+      mediaPeer.on("newproducer", producer => {
+        // console.log("New mediaPeer producer:", producer.kind);
+        producer.on("close", originator => {
+          // console.log("Producer closed from originator:", originator);
+        });
+      });
+
+      mediaPeer.on("newconsumer", consumer => {
+        // console.log("New mediaPeer consumer:", consumer.kind);
+        consumer.on("close", originator => {
+          // console.log("Consumer closed from originator", originator);
+        });
+      });
+
+      // Also handle already existing Consumers.
+      mediaPeer.consumers.forEach(consumer => {
+        // console.log("mediaPeer existing consumer:", consumer.kind);
+        consumer.on("close", originator => {
+          // console.log("Existing consumer closed from originator", originator);
+        });
+      });
+    };
+  });
+};

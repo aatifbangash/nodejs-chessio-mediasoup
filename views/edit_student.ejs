@@ -1,0 +1,51 @@
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ./partials/admin-navbar %>
+
+    <div class="container">
+      <h1 class="mt-4">Edit User</h1>
+      <% include ./partials/messages %>
+      <form action="/update_student" method="POST" class="w-75">
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input 
+          type="text" 
+          class="form-control" 
+          id="name" name="name" 
+          placeholder="User name here..."
+          value="<%= user.name %>"
+          >
+        </div>
+        <div class="form-group">
+          <label for="menu">Email</label>
+          <input 
+          type="text" 
+          disabled="disabled"
+          class="form-control" 
+          id="email" email="email" 
+          placeholder="User email here..."
+          value="<%= user.email %>"
+          >
+        </div>
+        <div class="form-group">
+          <label for="role">Role</label>
+          <select class="form-control" id="role" name="role">
+            <option <%= user.role == 'admin' ? 'selected' : '' %> value="admin">Admin</option>
+            <option <%= user.role == 'teacher' ? 'selected' : '' %> value="teacher">Teacher</option>
+            <option <%= user.role == 'student' ? 'selected' : '' %> value="student">Student</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <input 
+          type="hidden"
+          name="_id" 
+          value="<%= user._id %>"
+          >
+          <button type="submit" id="submitPage" name="submitPage" value="submited" class="btn btn-primary mb-2">Update User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- /#page-content-wrapper -->
+</div>

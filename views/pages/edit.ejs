@@ -1,0 +1,69 @@
+<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/5/tinymce.min.js" referrerpolicy="origin"></script>
+<script>
+  tinymce.init({
+    selector: "#content",
+    plugins: "image code",
+    toolbar: "undo redo | image code",
+    relative_urls: false,
+    remove_script_host: false,
+    images_upload_url: "/upload" //return must be: {"location":"/uploaded/image/path/image.png"}
+    // postAcceptor.php example https://www.tiny.cloud/docs/advanced/php-upload-handler/
+  });
+</script>
+<div class="d-flex" id="wrapper">
+  <!-- Page Content -->
+  <div id="page-content-wrapper">
+    <% include ../partials/admin-navbar %>
+
+    <div class="container">
+      <h1 class="mt-4">Edit Page</h1>
+      <% include ../partials/messages %>
+      <form action="/pages/update" method="POST" class="w-75">
+        <div class="form-group">
+          <label for="title">Title</label>
+          <input 
+          type="text" 
+          class="form-control" 
+          id="title" name="title" 
+          placeholder="Page title here..."
+          value="<%= page.title %>"
+          >
+        </div>
+        <div class="form-group">
+          <label for="menu">Make menu</label>
+          <select class="form-control" id="menu" name="menu">
+            <option <%= page.menu == 'No' ? 'selected' : '' %> value="No">No</option>
+            <option <%= page.menu == 'Yes' ? 'selected' : '' %> value="Yes">Yes</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="status">Status</label>
+          <select class="form-control" id="status" name="status">
+            <option <%= page.status == 'Pending' ? 'selected' : '' %> value="Pending">Pending</option>
+            <option <%= page.status == 'Active' ? 'selected' : '' %> value="Active">Active</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="content">Content</label>
+          <textarea 
+          class="form-control" 
+          id="content" 
+          name="content" 
+          rows="3"><%= page.content %></textarea>
+        </div>
+        <div class="form-group">
+          <input 
+          type="hidden"
+          name="_id" 
+          value="<%= page._id %>"
+          >
+          <button type="submit" id="submitPage" name="submitPage" value="submited" class="btn btn-primary mb-2">Update Page</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- /#page-content-wrapper -->
+</div>
+<style>
+    .tox-notifications-container {display: none !important;}
+</style>
